@@ -9,7 +9,7 @@ int local_cmd(char *buf);
 int server_cmd (char*buf);
 int exit_cmd(int socketfd, char *buf, int D_FLAG); 
 int get_datasocket(int socketfd, int D_FLAG, const char* ip); 
-int rls_cmd(int datasocket, char *buf, int D_FLAG);
+int rls_cmd(int socketfd, int datasocket, char *buf, int D_FLAG);
 
 int main(int argc, char const *argv[])
 {
@@ -95,7 +95,7 @@ int main(int argc, char const *argv[])
                     else { 
                         datasocket = get_datasocket(socketfd, D_FLAG, argv[2]); 
                     } 
-                    rls_cmd(datasocket,buf, D_FLAG); 
+                    rls_cmd(socketfd, datasocket,buf, D_FLAG); 
 
                     close(datasocket); 
                     break;
@@ -122,12 +122,8 @@ int main(int argc, char const *argv[])
             memset(buf, 0, sizeof(buf));
         }
     } 
-    
-
-
     return 0;
 }
-
 
 int local_cmd(char *buf) { 
     char *ls = "ls\n", *cd = "cd", *exit = "exit\n";
@@ -248,16 +244,30 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip) {
     if(D_FLAG) printf("Created data socket with descriptor %d\n", f_newport); 
     server = (struct sockaddr_in*)actdata->ai_addr; 
     printf("hostname: %s\n", inet_ntoa(server->sin_addr));
-
-
-
+    printf("Attempting to establish Data connection\n"); 
+    
     if( connect(f_newport, actdata->ai_addr, actdata->ai_addrlen) < 0) { 
         perror("Error"); 
         exit(1); 
     }
+    if(D_FLAG) printf("Data connetion to server established\n"); 
+    
+
     return f_newport;
 } 
 
-int rls_cmd(int datasocket, char *buf, int D_FLAG) { 
+int rls_cmd(int socketfd, int datasocket, char *buf, int D_FLAG) { 
+    int readbytes; 
+    char *ls = "L\n";
 
+    // Write our command to main socketfd connection.
+
+    write(socketfd, ls, strlen(ls)); 
+    if(D_FLAG) printf("Waiting server Response..\n");
+
+
+    //Read incoming data from datasocket. 
+    if (readbytes = read(datasocket, buf, sizeof(buf)) > 0) { 
+        printf("Reading server response\n");
+    }
 }
