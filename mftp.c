@@ -66,34 +66,48 @@ int main(int argc, char const *argv[])
         printf("Connected to server %s\n", argv[2]);
     }
     
-
-
     //Main loop
     while(1) { 
         //Always write mftp> before getting command
         write(STDOUT_FILENO, mftp, strlen(mftp));
+
+
         //Get command from user.
         if ((readbytes = read(STDIN_FILENO, buf, 256)) > 0) { 
-        
             if(D_FLAG) printf("Commmand string = %s", buf);
-            write(socketfd, buf, strlen(buf));
 
             if( (cmd = local_cmd(buf)) > 0) { //Check if commmand is for local
-                char *server_quit = "exit:"; 
+                char *server_quit = "Q\n"; 
                 switch (cmd){
                 case 1:   //EXIT PROGRAMS
 
-                    /* CLEAN UP GOES HERE */
+
+                    /* CLEAN UP GOES HERE 
+                    * NOTE!!!!: NEED TO MAKE THIS INTO A FUNCTION TO LOOK NICER*/
+                    if(D_FLAG) printf("Giving server command: %s", buf);
                     write(socketfd, server_quit, strlen(server_quit));
                     
+                    if(D_FLAG) printf("Waiting server Response..\n");
+
+                    readbytes = read(socketfd, buf, sizeof(buf)); 
+                    if(D_FLAG) printf("Server response: %s", buf);
                     /*GET SERVER RESPONSE*/
-                    // write(STDOUT_FILENO, exit_str, strlen(exit_str));
-                    // exit(1);
-                    
+                    if(buf[0] == 65) {  // response A
+                        write(STDOUT_FILENO, exit_str, strlen(exit_str));
+                        fflush(stdout);
+                        exit(1);
+                    }
+                    else if(buf[0] == 69) { 
+                        write(STDERR_FILENO, buf, readbytes); 
+                        fflush(stderr);
+                    }
                     break;
                 
                 case 2: // LS COMMAND
-                
+
+
+
+
                 default:
                     break;
                 }
@@ -121,7 +135,7 @@ int main(int argc, char const *argv[])
 
 
 int local_cmd(char *buf) { 
-    char *ls = "ls", *cd = "cd", *exit = "exit";
+    char *ls = "ls\n", *cd = "cd", *exit = "exit\n";
     char *space = " ";
     char *token = strtok(buf, space);
     if(token != NULL) { 
@@ -161,15 +175,3 @@ int run_local(int cmd) {
         break;
     }
 }
-
-// int reponse(socketfd) { 
-//     char rbuf[3]; 
-//     char *tmp; 
-//     int rbuf_len=0;
-
-//     while(tmp != '\n') { 
-//         read(socketfd, tmp, 1); 
-//         rbuf[rbuf_len++] = tmp; 
-//         rbuf_len++;
-//     }
-// }
