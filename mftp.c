@@ -5,12 +5,6 @@ int D_FLAG;
 
 
 
-int local_cmd(char *buf);
-int server_cmd (char*buf);
-int exit_cmd(int socketfd, char *buf, int D_FLAG); 
-int get_datasocket(int socketfd, int D_FLAG, const char* ip); 
-int rls_cmd(int socketfd, int datasocket, char *buf, int D_FLAG);
-
 int main(int argc, char const *argv[])
 {
     struct addrinfo hints, *actualdata; 
@@ -67,6 +61,7 @@ int main(int argc, char const *argv[])
     
     //Main loop
     while(1) { 
+         int pid; 
         //Always write mftp> before getting command
         write(STDOUT_FILENO, mftp, strlen(mftp));
         //Get command from user.
@@ -80,7 +75,11 @@ int main(int argc, char const *argv[])
                     exit_cmd(socketfd, buf, D_FLAG); 
                     break;
                 
-                case 2: // LS COMMAND   
+                case 2: // LS COMMAND  
+                    ls_cmd(D_FLAG); 
+                    break;
+                case 3: 
+                    cd_cmd(buf, D_FLAG); 
                 default:
                     break;
                 }
@@ -202,6 +201,57 @@ int exit_cmd(int socketfd, char *buf, int D_FLAG) {
         write(STDERR_FILENO, buf, readbytes); 
         fflush(stderr);
     }
+
+}
+
+int ls_cmd(int D_FLAG) { 
+    int reader, writer; 
+    int fd[2]; 
+    if(pipe(fd) < 0) { 
+        fprintf(stderr, "%s\n", strerror(errno)); 
+        exit(-1); 
+    }
+    else { 
+        pipe(fd); 
+    } 
+    writer =fd[1]; 
+    reader =fd[0]; 
+
+    int pid = fork(); 
+    if(D_FLAG) printf("Created process %d\n to handle ls.", pid);
+
+    if(pid < 0) {   //Check if fork() worked. 
+        fprintf(stderr, "Error occured while forking."); 
+        exit(-1); 
+    } 
+    else if(pid ==0) { //Child process
+        dup2(writer, STDOUT_FILENO); 
+        close(reader);
+        close(writer);
+        execlp("ls","ls","-l", (char*) NULL); 
+        printf("%s\n", strerror(errno));
+        exit(-1);
+    }
+    else { 
+        if(D_FLAG) printf("Waiting for pid to finish"); 
+        
+        waitpid(pid,NULL,0); 
+        
+        if(D_FLAG) printf("%d finished now executing more -20\n",pid); 
+
+        dup2(reader,STDIN_FILENO); 
+        close(writer);
+        close(reader);
+        execlp("more", "more", "-20", (char*) NULL); 
+        printf("%s\n", strerror(errno));
+        exit(1);
+    }
+    close(reader);
+    close(writer); 
+    return 0;
+}
+
+int cd_cmd(char *buf, int D_FLAG) { 
 
 }
 int get_datasocket(int socketfd, int D_FLAG, const char* ip) { 
