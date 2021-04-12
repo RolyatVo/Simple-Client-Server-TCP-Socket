@@ -126,7 +126,7 @@ int main(int argc, char const *argv[])
 }
 
 int local_cmd(char *buf) { 
-    char *ls = "ls\n", *cd = "cd\n", *exit = "exit\n";
+    char *ls = "ls\n", *cdn = "cd\n", *exit = "exit\n", *cd = "cd";
     char *space = " ";
     char *token = strtok(buf, space);
     if(token != NULL) { 
@@ -136,7 +136,7 @@ int local_cmd(char *buf) {
         else if (strcmp(token, ls) ==0) { 
             return 2; 
         }
-        else if (strcmp(token, cd) ==0) { 
+        else if (strcmp(token, cdn) ==0 || strcmp(token, cd) ==0) { 
             return 3;
         }
         else { 
@@ -260,9 +260,20 @@ int ls_cmd(int D_FLAG) {
 
 int cd_cmd(char *buf, int D_FLAG) { 
     char *space = " "; 
-    char *cmd = strtok(buf, space); 
-    buf += strlen(cmd); 
-    printf("Path %s\n", buf);  
+    int err;
+    char cwd[100]; 
+    char *ptr = buf; 
+    buf += 3;
+    if(strlen(buf) ==0) { 
+        printf("Command error: cd needs a paramter.\n"); 
+    }
+    else { 
+        buf[strlen(buf)-1] = '\0'; 
+        if(D_FLAG) printf("Changing to Path %s\n", buf); 
+        err = chdir(buf); 
+        if (err < 0) printf("%s\n", strerror(errno)); 
+        printf("Changed cwd to %s\n", getcwd(cwd, 100)); 
+    }    
 
 }
 int get_datasocket(int socketfd, int D_FLAG, const char* ip) { 
