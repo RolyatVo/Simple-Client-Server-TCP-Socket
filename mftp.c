@@ -80,6 +80,7 @@ int main(int argc, char const *argv[])
                     break;
                 case 3: 
                     cd_cmd(buf, D_FLAG); 
+                    break;
                 default:
                     break;
                 }
@@ -125,7 +126,7 @@ int main(int argc, char const *argv[])
 }
 
 int local_cmd(char *buf) { 
-    char *ls = "ls\n", *cd = "cd", *exit = "exit\n";
+    char *ls = "ls\n", *cd = "cd\n", *exit = "exit\n";
     char *space = " ";
     char *token = strtok(buf, space);
     if(token != NULL) { 
@@ -187,9 +188,8 @@ int exit_cmd(int socketfd, char *buf, int D_FLAG) {
 
     readbytes = read(socketfd, buf, sizeof(buf)); 
 
-    if(D_FLAG) { 
-        buf[3] = '\0';     
-        printf("Server response: %s", buf);
+    if(D_FLAG) {  
+        printf("Server response: %c\n", buf[0]);
     } 
     /*GET SERVER RESPONSE*/
     if(buf[0] == 65) {  // response A
@@ -216,42 +216,53 @@ int ls_cmd(int D_FLAG) {
     } 
     writer =fd[1]; 
     reader =fd[0]; 
+    int pid;
+    if((pid = fork()) ==0) { 
+        int pid2 = fork(); 
+        if(pid2 < 0) {   //Check if fork() worked. 
+            fprintf(stderr, "Error occured while forking."); 
+            exit(-1); 
+        } 
+        else if(pid2 ==0) { //Child process
+            dup2(writer, STDOUT_FILENO); 
+            close(reader);
+            close(writer);
+            execlp("ls","ls","-l", (char*) NULL); 
+            printf("%s\n", strerror(errno));
+            exit(-1);
+        }
+        else if (pid2) { 
+            if(D_FLAG) printf("Waiting for pid to finish\n"); 
+            
+            waitpid(pid2,NULL,0); 
+            
+            if(D_FLAG) printf("%d finished now executing more -20\n",pid); 
 
-    int pid = fork(); 
-    if(D_FLAG) printf("Created process %d\n to handle ls.", pid);
-
-    if(pid < 0) {   //Check if fork() worked. 
-        fprintf(stderr, "Error occured while forking."); 
-        exit(-1); 
-    } 
-    else if(pid ==0) { //Child process
-        dup2(writer, STDOUT_FILENO); 
+            dup2(reader,STDIN_FILENO); 
+            close(writer);
+            close(reader);
+            execlp("more", "more", "-20", (char*) NULL); 
+            printf("%s\n", strerror(errno));
+            exit(-1);
+        }
         close(reader);
         close(writer);
-        execlp("ls","ls","-l", (char*) NULL); 
-        printf("%s\n", strerror(errno));
-        exit(-1);
     }
-    else { 
-        if(D_FLAG) printf("Waiting for pid to finish"); 
-        
-        waitpid(pid,NULL,0); 
-        
-        if(D_FLAG) printf("%d finished now executing more -20\n",pid); 
-
-        dup2(reader,STDIN_FILENO); 
+    else {
         close(writer);
         close(reader);
-        execlp("more", "more", "-20", (char*) NULL); 
-        printf("%s\n", strerror(errno));
-        exit(1);
+        waitpid(pid, NULL, 0);
+
     }
-    close(reader);
-    close(writer); 
+    fflush(stdout);
     return 0;
 }
 
 int cd_cmd(char *buf, int D_FLAG) { 
+    char *space = " "; 
+    char *cmd = strtok(buf, space); 
+    buf += strlen(cmd); 
+    printf("Path %s\n", buf);  
 
 }
 int get_datasocket(int socketfd, int D_FLAG, const char* ip) { 
