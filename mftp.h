@@ -24,3 +24,4 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip);
 int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg);
 int ls_cmd(int D_FLAG);
 int cd_cmd(char *buf, int D_FLAG); 
+int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg);

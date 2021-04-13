@@ -8,7 +8,7 @@ int D_FLAG;
 int main(int argc, char const *argv[])
 {
     struct addrinfo hints, *actualdata; 
-    int socketfd, readbytes, err, cmd, datasocket; 
+    int socketfd, readbytes, err, cmd; 
     char *init_err = "Usage: ./mftp [-d] <port> <hostname | IP address>\n";
     char *mftp = "MFTP>";
     char *dflag = "-d"; 
@@ -69,7 +69,6 @@ int main(int argc, char const *argv[])
             if(D_FLAG) printf("Commmand string = %s", buf);
 
             if( (cmd = local_cmd(buf)) > 0) { //Check if commmand is for local
-                // char *server_quit = "Q\n"; 
                 switch (cmd){
                 case 1:   //EXIT PROGRAMS
                     exit_cmd(socketfd, buf, D_FLAG); 
@@ -78,7 +77,7 @@ int main(int argc, char const *argv[])
                 case 2: // LS COMMAND  
                     ls_cmd(D_FLAG); 
                     break;
-                case 3: 
+                case 3: // CD COMMAND
                     cd_cmd(buf, D_FLAG); 
                     break;
                 default:
@@ -90,18 +89,20 @@ int main(int argc, char const *argv[])
                 case 1: // RLS COMMAND
                     if(D_FLAG) {  
                         printf("Executing remote ls command\n");
-                       // datasocket = get_datasocket(socketfd, D_FLAG, argv[3]);
                         rls_cmd(socketfd, buf, D_FLAG, argv[3]); 
                     }
-                    else { 
-                      //  datasocket = get_datasocket(socketfd, D_FLAG, argv[2]); 
+                    else {  
                         rls_cmd(socketfd, buf, D_FLAG, argv[2]); 
                     } 
-                    //rls_cmd(socketfd, datasocket,buf, D_FLAG); 
-
-                    close(datasocket); 
                     break;
-                case 2:
+                case 2: //RCD COMMAND
+                    if(D_FLAG) {  
+                        printf("Executing remote cd command\n");
+                        rcd_cmd(socketfd, buf, D_FLAG, argv[3]); 
+                    }
+                    else {  
+                        rcd_cmd(socketfd, buf, D_FLAG, argv[2]); 
+                    } 
                    break;
                 case 3:
                    break;
@@ -109,8 +110,6 @@ int main(int argc, char const *argv[])
                    break;
                 case 5:
                    break;
-                
-
                 default:
                     break;
                }
@@ -150,7 +149,7 @@ int local_cmd(char *buf) {
 }
 int server_cmd (char*buf) {
     //List of commands
-    char *rlsn = "rls\n",*rls = "rls", *rcd = "rcd",  *get = "get", *show = "show", *put = "put"; 
+    char *rlsn = "rls\n",*rls = "rls", *rcd = "rcd",*rcdn = "rcd\n", *get = "get", *show = "show", *put = "put"; 
     char *space = " "; 
     char *token = strtok(buf, space); 
 
@@ -158,7 +157,7 @@ int server_cmd (char*buf) {
         if(strcmp(token, rlsn) ==0 || strcmp(token,rls) ==0 ) {
             return 1;     
         }
-        else if(strcmp(token, rcd)==0) { 
+        else if(strcmp(token, rcd)==0 || strcmp(token, rcdn) ==0) { 
             return 2; 
         }
         else if (strcmp(token, get) ==0) {
@@ -355,7 +354,7 @@ int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
         write(STDERR_FILENO, buf, readbytes); 
         fflush(stderr);
     }
-    
+
     if(pipe (fd) < 0) { 
         printf("%s\n", strerror(errno)); 
         exit(-1); 
@@ -383,7 +382,36 @@ int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
         close(writer);
         waitpid(pid, NULL, 0); 
     }
+    close(datasocket);
+}
+int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
+    char *space = " "; 
+    char *c = "C"; 
+    int err, readbytes;
+    char cwd[100]; 
+    char *ptr = buf; 
+    buf += 4;
+    if(strlen(buf) ==0) { 
+        printf("Command error: rcd needs a paramter.\n"); 
+    }
+    else {
+        //More robust checking needed. 
+        write(socketfd, c, strlen(c)); 
+        write(socketfd, buf, strlen(buf));
+        if(D_FLAG) printf("Awaiting server response.."); 
+        readbytes = read(socketfd, cwd, sizeof(buf)); 
 
-
+        if(D_FLAG) {  
+            printf("Server response: %c\n", buf[0]);
+        } 
+        /*GET SERVER RESPONSE*/
+        if(cwd[0] == 69) { 
+            write(STDERR_FILENO, buf, readbytes); 
+            fflush(stderr);
+    }
+        else {        
+            printf("Changed remote path to: %s", buf); 
+        }
+    }    
 
 }
