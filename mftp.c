@@ -339,7 +339,7 @@ int rls_cmd(int socketfd, int datasocket, char *buf, int D_FLAG) {
 
 
     //Read incoming data from datasocket. 
-    if (readbytes = read(datasocket, buf, sizeof(buf)) > 0) { 
+    if ((readbytes = read(datasocket, buf, sizeof(buf))) > 0) { 
         printf("Reading server response\n");
     }
 }
