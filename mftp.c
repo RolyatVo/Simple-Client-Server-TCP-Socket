@@ -1,6 +1,6 @@
 #include "mftp.h" 
 
-#define ACKNOWLEDGED "A"
+//#define ACKNOWLEDGED "A"
 int D_FLAG;
 
 
@@ -50,13 +50,17 @@ int main(int argc, char const *argv[])
         perror("Error"); 
         exit(1); 
     }
+
+    const char *ip;
     if(D_FLAG) { 
         printf("Debug flag detected.\n");
         printf("Created socket with descriptor %d\n", socketfd);  
         printf("Connected to server %s\n", argv[3]);
+        ip = argv[3]; 
     }
     else { 
         printf("Connected to server %s\n", argv[2]);
+        ip = argv[2]; 
     }
     
     //Main loop
@@ -87,28 +91,20 @@ int main(int argc, char const *argv[])
             else if( (cmd = server_cmd(buf)) > 0) { //Check if command is for server
                switch (cmd){
                 case 1: // RLS COMMAND
-                    if(D_FLAG) {  
-                        printf("Executing remote ls command\n");
-                        rls_cmd(socketfd, buf, D_FLAG, argv[3]); 
-                    }
-                    else {  
-                        rls_cmd(socketfd, buf, D_FLAG, argv[2]); 
-                    } 
+                    if(D_FLAG) printf("Executing remote ls command\n");
+                    rls_cmd(socketfd, buf, D_FLAG, ip); 
                     break;
                 case 2: //RCD COMMAND
-                    if(D_FLAG) {  
-                        printf("Executing remote cd command\n");
-                        rcd_cmd(socketfd, buf, D_FLAG, argv[3]); 
-                    }
-                    else {  
-                        rcd_cmd(socketfd, buf, D_FLAG, argv[2]); 
-                    } 
+                    if(D_FLAG) printf("Executing remote cd command\n");
+                    rcd_cmd(socketfd, buf, D_FLAG, ip); 
                    break;
-                case 3:
+                case 3: //GET COMMAND
                    break;
-                case 4:
-                   break;
-                case 5:
+                case 4: //SHOW COMMAND
+                    if(D_FLAG) printf("Executing show command\n");
+                    show_cmd(socketfd, buf, D_FLAG,ip);
+                    break;
+                case 5: //PUT COMMAND
                    break;
                 default:
                     break;
@@ -149,7 +145,11 @@ int local_cmd(char *buf) {
 }
 int server_cmd (char*buf) {
     //List of commands
-    char *rlsn = "rls\n",*rls = "rls", *rcd = "rcd",*rcdn = "rcd\n", *get = "get", *show = "show", *put = "put"; 
+    char *rls = "rls",*rlsn = "rls\n";
+    char *rcd = "rcd",*rcdn = "rcd\n";
+    char *get = "get", *getn = "get\n";
+    char *show = "show", *shown = "show\n";
+    char *put = "put", *putn = "put\n";
     char *space = " "; 
     char *token = strtok(buf, space); 
 
@@ -160,13 +160,13 @@ int server_cmd (char*buf) {
         else if(strcmp(token, rcd)==0 || strcmp(token, rcdn) ==0) { 
             return 2; 
         }
-        else if (strcmp(token, get) ==0) {
+        else if (strcmp(token, get)==0 || strcmp(token, getn) ==0) {
             return 3; 
         } 
-        else if (strcmp(token, show) ==0) { 
+        else if (strcmp(token, show)==0 || strcmp(token, shown) ==0) { 
             return 4;
         } 
-        else if (strcmp(token, put) ==0) {
+        else if (strcmp(token, put)==0 || strcmp(token, putn) ==0) {
             return 5;
         }
         else { 
@@ -324,7 +324,6 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip) {
 
     return f_newport;
 } 
-
 int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) { 
     int reader, writer, readbytes, datasocket; 
     
@@ -336,16 +335,11 @@ int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     }
     datasocket = get_datasocket(socketfd, D_FLAG, arg);
 
-    int fd[2]; 
     char *ls = "L\n";
-
     // Write our command to main socketfd connection.
-
     write(socketfd, ls, strlen(ls)); 
-
     if(D_FLAG) printf("Waiting server Response..\n");
     readbytes = read(socketfd, buf, sizeof(buf)); 
-
     if(D_FLAG) {  
         printf("Server response: %c\n", buf[0]);
     } 
@@ -353,36 +347,9 @@ int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     if(buf[0] == 69) { 
         write(STDERR_FILENO, buf, readbytes); 
         fflush(stderr);
+        return -1; 
     }
-
-    if(pipe (fd) < 0) { 
-        printf("%s\n", strerror(errno)); 
-        exit(-1); 
-    }  
-
-    pipe(fd); 
-    writer = fd[1];
-    reader = fd[1];
-
-    int pid = fork(); 
-    if(pid < 0) { 
-        printf("ERROR: Problem with forking.\n");
-        exit(-1); 
-    } 
-    else if (pid ==0) { 
-        dup2(datasocket, STDIN_FILENO); 
-        close(writer); 
-        close(reader);
-        execlp("more", "more", "-20", (char*) NULL); 
-        printf("%s\n", strerror(errno));
-        exit(-1);
-    } 
-    else { 
-        close(reader);
-        close(writer);
-        waitpid(pid, NULL, 0); 
-    }
-    close(datasocket);
+    fork_to_more(datasocket); 
 }
 int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     char *space = " "; 
@@ -408,10 +375,70 @@ int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
         if(cwd[0] == 69) { 
             write(STDERR_FILENO, buf, readbytes); 
             fflush(stderr);
-    }
+        }
         else {        
             printf("Changed remote path to: %s", buf); 
         }
     }    
-
 }
+int show_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
+    int datasocket, readbytes; 
+    char r_buf[50];
+    char *get= "G";
+
+    buf+=5;
+    if(strlen(buf) ==0) { 
+    printf("Command error: show needs a paramter.\n"); 
+    return -1;
+    }
+
+    datasocket = get_datasocket(socketfd, D_FLAG, arg);
+    write(socketfd, get, strlen(get)); 
+    write(socketfd, buf, strlen(buf)); 
+    
+    if(D_FLAG) printf("Awaiting server response.."); 
+    readbytes = read(socketfd, r_buf, sizeof(r_buf)); 
+
+    if(D_FLAG) printf("Server response: %c\n", buf[0]); 
+    /*GET SERVER RESPONSE*/
+    if(buf[0] == 69) { 
+        write(STDERR_FILENO, buf, readbytes); 
+        fflush(stderr);
+        return -1;
+    }
+    else {        
+        printf("Getting file to %s", buf); 
+    }
+
+    fork_to_more(datasocket);     
+}
+int fork_to_more(int datasocket) { 
+    int fd[2], reader, writer; 
+
+    if(pipe (fd) < 0) { 
+        printf("%s\n", strerror(errno)); 
+        exit(-1); 
+    }  
+    pipe(fd); 
+    writer = fd[1];
+    reader = fd[0];
+    int pid = fork(); 
+    if(pid < 0) { 
+        printf("ERROR: Problem with forking.\n");
+        exit(-1); 
+    } 
+    else if (pid ==0) { 
+        dup2(datasocket, STDIN_FILENO); 
+        close(writer); 
+        close(reader);
+        execlp("more", "more", "-20", (char*) NULL); 
+        printf("%s\n", strerror(errno));
+        exit(-1);
+    } 
+    else { 
+        close(reader);
+        close(writer);
+        waitpid(pid, NULL, 0); 
+    }
+    close(datasocket);
+} 
