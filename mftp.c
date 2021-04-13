@@ -89,13 +89,15 @@ int main(int argc, char const *argv[])
                switch (cmd){
                 case 1: // RLS COMMAND
                     if(D_FLAG) {  
-                        printf("Executing remove ls command\n");
-                        datasocket = get_datasocket(socketfd, D_FLAG, argv[3]); 
+                        printf("Executing remote ls command\n");
+                       // datasocket = get_datasocket(socketfd, D_FLAG, argv[3]);
+                        rls_cmd(socketfd, buf, D_FLAG, argv[3]); 
                     }
                     else { 
-                        datasocket = get_datasocket(socketfd, D_FLAG, argv[2]); 
+                      //  datasocket = get_datasocket(socketfd, D_FLAG, argv[2]); 
+                        rls_cmd(socketfd, buf, D_FLAG, argv[2]); 
                     } 
-                    rls_cmd(socketfd, datasocket,buf, D_FLAG); 
+                    //rls_cmd(socketfd, datasocket,buf, D_FLAG); 
 
                     close(datasocket); 
                     break;
@@ -124,7 +126,6 @@ int main(int argc, char const *argv[])
     } 
     return 0;
 }
-
 int local_cmd(char *buf) { 
     char *ls = "ls\n", *cdn = "cd\n", *exit = "exit\n", *cd = "cd";
     char *space = " ";
@@ -147,15 +148,14 @@ int local_cmd(char *buf) {
         return -1;
     }    
 }
-
 int server_cmd (char*buf) {
     //List of commands
-    char *rls = "rls\n", *rcd = "rcd",  *get = "get", *show = "show", *put = "put"; 
+    char *rlsn = "rls\n",*rls = "rls", *rcd = "rcd",  *get = "get", *show = "show", *put = "put"; 
     char *space = " "; 
     char *token = strtok(buf, space); 
 
     if(token != NULL) { 
-        if(strcmp(token, rls) ==0) {
+        if(strcmp(token, rlsn) ==0 || strcmp(token,rls) ==0 ) {
             return 1;     
         }
         else if(strcmp(token, rcd)==0) { 
@@ -175,7 +175,6 @@ int server_cmd (char*buf) {
         } 
     }
 }
-
 int exit_cmd(int socketfd, char *buf, int D_FLAG) { 
     int readbytes; 
     char *server_quit = "Q\n";
@@ -203,7 +202,6 @@ int exit_cmd(int socketfd, char *buf, int D_FLAG) {
     }
 
 }
-
 int ls_cmd(int D_FLAG) { 
     int reader, writer; 
     int fd[2]; 
@@ -257,7 +255,6 @@ int ls_cmd(int D_FLAG) {
     fflush(stdout);
     return 0;
 }
-
 int cd_cmd(char *buf, int D_FLAG) { 
     char *space = " "; 
     int err;
@@ -279,7 +276,7 @@ int cd_cmd(char *buf, int D_FLAG) {
 int get_datasocket(int socketfd, int D_FLAG, const char* ip) { 
     struct addrinfo h, *actdata; 
     struct sockaddr_in* server; 
-    char r_buf[100]; 
+    char r_buf[100] = {0}; 
     int readbytes, f_newport; 
     char *newport;
     char *d = "D\n"; 
@@ -292,7 +289,6 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip) {
     if(D_FLAG) printf("Sent D command to server\n");
 
     if(D_FLAG) printf("Waiting server Response..\n");
-
     if( (readbytes = read(socketfd, r_buf, sizeof(r_buf))) >0) {
         r_buf[readbytes-1] = '\0';
         if(D_FLAG) printf("Recieved server response: '%s'\n", r_buf);
@@ -315,9 +311,11 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip) {
     }
     if(D_FLAG) printf("Created data socket with descriptor %d\n", f_newport); 
     server = (struct sockaddr_in*)actdata->ai_addr; 
-    printf("hostname: %s\n", inet_ntoa(server->sin_addr));
-    printf("Attempting to establish Data connection\n"); 
-    
+
+    if(D_FLAG) { 
+        printf("hostname: %s\n", inet_ntoa(server->sin_addr));
+        printf("Attempting to establish Data connection\n"); 
+    }
     if( connect(f_newport, actdata->ai_addr, actdata->ai_addrlen) < 0) { 
         perror("Error"); 
         exit(1); 
@@ -328,18 +326,64 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip) {
     return f_newport;
 } 
 
-int rls_cmd(int socketfd, int datasocket, char *buf, int D_FLAG) { 
-    int readbytes; 
+int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) { 
+    int reader, writer, readbytes, datasocket; 
+    
+    buf += 4; 
+    if(strlen(buf) !=0) { 
+        printf("rls command invald.\n");
+        close(datasocket);
+        return 1;
+    }
+    datasocket = get_datasocket(socketfd, D_FLAG, arg);
+
+    int fd[2]; 
     char *ls = "L\n";
 
     // Write our command to main socketfd connection.
 
     write(socketfd, ls, strlen(ls)); 
+
     if(D_FLAG) printf("Waiting server Response..\n");
+    readbytes = read(socketfd, buf, sizeof(buf)); 
 
-
-    //Read incoming data from datasocket. 
-    if ((readbytes = read(datasocket, buf, sizeof(buf))) > 0) { 
-        printf("Reading server response\n");
+    if(D_FLAG) {  
+        printf("Server response: %c\n", buf[0]);
+    } 
+    /*GET SERVER RESPONSE*/
+    if(buf[0] == 69) { 
+        write(STDERR_FILENO, buf, readbytes); 
+        fflush(stderr);
     }
+    
+    if(pipe (fd) < 0) { 
+        printf("%s\n", strerror(errno)); 
+        exit(-1); 
+    }  
+
+    pipe(fd); 
+    writer = fd[1];
+    reader = fd[1];
+
+    int pid = fork(); 
+    if(pid < 0) { 
+        printf("ERROR: Problem with forking.\n");
+        exit(-1); 
+    } 
+    else if (pid ==0) { 
+        dup2(datasocket, STDIN_FILENO); 
+        close(writer); 
+        close(reader);
+        execlp("more", "more", "-20", (char*) NULL); 
+        printf("%s\n", strerror(errno));
+        exit(-1);
+    } 
+    else { 
+        close(reader);
+        close(writer);
+        waitpid(pid, NULL, 0); 
+    }
+
+
+
 }
