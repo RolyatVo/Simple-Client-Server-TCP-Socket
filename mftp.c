@@ -70,7 +70,6 @@ int main(int argc, char const *argv[]){
         //Get command from user.
         if ((readbytes = read(STDIN_FILENO, buf, 256)) > 0) { 
             if(D_FLAG) printf("Commmand string = %s", buf);
-
             if( (cmd = local_cmd(buf)) > 0) { //Check if commmand is for local
                 switch (cmd){
                 case 1:   //EXIT PROGRAMS
@@ -98,6 +97,7 @@ int main(int argc, char const *argv[]){
                     rcd_cmd(socketfd, buf, D_FLAG, ip); 
                     break;
                 case 3: //GET COMMAND
+                    if(D_FLAG) printf("Executing get command\n");
                     get_cmd(socketfd, buf, D_FLAG, ip);
                     break;
                 case 4: //SHOW COMMAND
@@ -105,7 +105,9 @@ int main(int argc, char const *argv[]){
                     show_cmd(socketfd, buf, D_FLAG,ip);
                     break;
                 case 5: //PUT COMMAND
-                   break;
+                    if(D_FLAG) printf("Executing put command\n");
+                    put_cmd(socketfd, buf, D_FLAG, ip);
+                    break;
                 default:
                     break;
                }
@@ -351,7 +353,6 @@ int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
         return -1; 
     }
     fork_to_more(datasocket);
-    close(datasocket); 
 }
 int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     char *space = " "; 
@@ -453,7 +454,7 @@ int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     buf+=4;
 
     if(strlen(buf) ==0) { 
-        printf("Command error: show needs a paramter.\n"); 
+        printf("Command error: get needs a paramter.\n"); 
         return -1;
     }
     // Get the file name from path
@@ -472,9 +473,6 @@ int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     else { 
         filefd = open(filename, O_RDWR | O_CREAT , 0700);
     }
- 
-
-
     datasocket = get_datasocket(socketfd, D_FLAG, arg); 
     write(socketfd, get, strlen(get));
     write(socketfd, buf, strlen(buf)); 
@@ -485,20 +483,90 @@ int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
     /*GET SERVER RESPONSE*/
     if(r_buf[0] == 69) { 
-        write(STDERR_FILENO, buf, readbytes); 
+        write(STDERR_FILENO, r_buf, readbytes); 
         fflush(stderr);
         return -1;
     }
-    
     if( lseek(filefd, 0, SEEK_SET) < 0) fprintf(stderr, strerror(errno), sizeof(strerror(errno))); 
 
     while( (readbytes = read(datasocket, r_buf, sizeof(r_buf))) > 0) { 
         if(D_FLAG) printf("Read %d bytes from server, writing same to local file.\n", readbytes); 
         write(filefd, r_buf, readbytes); 
     }
-
-    
     close(filefd);
-    
+    close(datasocket);
     free(filename);
 }   
+
+int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
+    int datasocket, readbytes, filefd, err;
+    char r_buf[512]; 
+    char *put = "P", *line = "/";
+    char *token, *filename = NULL; 
+    buf+=4;
+    strcpy(r_buf, buf);
+    if(strlen(buf) ==0) { 
+        printf("Command error: put needs a paramter.\n"); 
+        return -1;
+    }
+    // Get the file name from path
+    token = strtok(r_buf, line); 
+    while(token != NULL) {
+        if(filename != NULL) free(filename);
+        filename = strdup(token); 
+        token = strtok(NULL, line); 
+    }
+    buf[strlen(buf)-1] = '\0';
+    filename[strlen(filename)-1] = '\0';
+    if( access(buf, F_OK) != 0) { 
+        printf("File does not exist in path.\n"); 
+        return -1;
+    }
+    else if(checkfile(buf) < 0) {
+        printf("File is not readable/regular.\n");
+        return -1;
+    }
+    else { 
+        filefd = open(buf, O_RDONLY); 
+    }
+
+    datasocket = get_datasocket(socketfd, D_FLAG, arg);
+
+    filename[strlen(filename)] = '\n';
+    write(socketfd, put, strlen(put)); 
+    write(socketfd, filename, strlen(filename));
+
+    if(D_FLAG) printf("Awaiting server response..\n"); 
+    readbytes = read(socketfd, r_buf, sizeof(r_buf)); 
+
+    if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
+    /*GET SERVER RESPONSE*/
+    if(r_buf[0] == 69) { 
+        write(STDERR_FILENO, r_buf, readbytes); 
+        fflush(stderr);
+        return -1;
+    }
+
+    while ( (readbytes = read(filefd, r_buf, sizeof(r_buf))) > 0) { 
+        if(D_FLAG) printf("Read %d bytes from local path, writing to server.\n", readbytes); 
+        write(datasocket, r_buf, readbytes);
+    }
+    close(filefd);
+    close(datasocket);
+
+}
+int checkfile(char *inputPath) { 
+	struct stat area, *s = &area;
+
+	// Check to see if inputpath is a regular file, if it is and it's readable return 1, else just return -1
+	if(stat(inputPath, s) == 0 ) { 
+		//Regular file and readable
+		if(S_ISREG(s->st_mode) && (s->st_mode & S_IRUSR)) { 
+			return 1; 
+		}
+	}
+    return -1;
+}
+
+
+

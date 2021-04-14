@@ -30,3 +30,5 @@ int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg);
 int show_cmd(int socketfd, char*buf, int D_FLAG, const char*arg);
 int fork_to_more(int datasocket);
 int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg);
+int checkfile(char *inputPath);
+int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg);
