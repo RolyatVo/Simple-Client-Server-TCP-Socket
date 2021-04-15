@@ -1,9 +1,9 @@
 #include "mftp.h" 
-
-//#define ACKNOWLEDGED "A"
+//Check if write fails, unlink 
+//Double check for a connection if first fails
+//keep reading until new lines, do not put assume/anything in static arrays.
+//while(waitoid(0, status, WNOHANG) >0 );
 int D_FLAG;
-
-
 
 int main(int argc, char const *argv[]){
     struct addrinfo hints, *actualdata; 
@@ -77,12 +77,10 @@ int main(int argc, char const *argv[]){
                     exit_cmd(socketfd, buf, D_FLAG); 
                     break;
                 case 2: // LS COMMAND  
-                    ls_cmd(D_FLAG); 
+                    ls_cmd(buf, D_FLAG); 
                     break;
                 case 3: // CD COMMAND
                     cd_cmd(buf, D_FLAG); 
-                    break;
-                default:
                     break;
                 }
             }
@@ -108,8 +106,6 @@ int main(int argc, char const *argv[]){
                     if(D_FLAG) printf("Executing put command\n");
                     put_cmd(socketfd, buf, D_FLAG, ip);
                     break;
-                default:
-                    break;
                }
             }
             else { //If neither then we do not recognize command
@@ -123,14 +119,15 @@ int main(int argc, char const *argv[]){
     return 0;
 }
 int local_cmd(char *buf) { 
-    char *ls = "ls\n", *cdn = "cd\n", *exit = "exit\n", *cd = "cd";
+    char *lsn = "ls\n",*ls ="ls", *cdn = "cd\n", *exit = "exit\n", *cd = "cd";
     char *space = " ";
     char *token = strtok(buf, space);
     if(token != NULL) { 
         if(strcmp(token, exit) ==0) { 
             return 1; 
         }
-        else if (strcmp(token, ls) ==0) { 
+        //     !!!!!!!!    ERROR:  Check to see if ls got any parameters       !!!!!!!!!!!!
+        else if (strcmp(token, ls) ==0 || strcmp(token, lsn) ==0) { 
             return 2; 
         }
         else if (strcmp(token, cdn) ==0 || strcmp(token, cd) ==0) { 
@@ -182,29 +179,19 @@ int exit_cmd(int socketfd, char *buf, int D_FLAG) {
 
     if(D_FLAG) printf("Giving server command: %s", buf);
     write(socketfd, server_quit, strlen(server_quit));
-    
-    if(D_FLAG) printf("Waiting server Response..\n");
-
-    readbytes = read(socketfd, buf, sizeof(buf)); 
-
-    if(D_FLAG) {  
-        printf("Server response: %c\n", buf[0]);
-    } 
-    /*GET SERVER RESPONSE*/
-    if(buf[0] == 65) {  // response A
+    if (server_response(socketfd,buf, 512) < 0) return -1;
+    else { 
         write(STDOUT_FILENO, exit_str, strlen(exit_str));
         fflush(stdout);
-        exit(1);
+        exit(1);        
     }
-    else if(buf[0] == 69) { 
-        write(STDERR_FILENO, buf, readbytes); 
-        fflush(stderr);
-    }
-    free(buf);
-    close(socketfd);
-
 }
-int ls_cmd(int D_FLAG) { 
+int ls_cmd(char *buf, int D_FLAG) { 
+    buf += 3;
+    if(strlen(buf) !=0) { 
+        printf("Command error: ls does not need a paramter.\n"); 
+        return -1;
+    }
     int reader, writer; 
     int fd[2]; 
     if(pipe(fd) < 0) { 
@@ -271,7 +258,7 @@ int cd_cmd(char *buf, int D_FLAG) {
         if(D_FLAG) printf("Changing to Path %s\n", buf); 
         err = chdir(buf); 
         if (err < 0) printf("%s\n", strerror(errno)); 
-        printf("Changed cwd to %s\n", getcwd(cwd, 100)); 
+        else printf("Changed cwd to %s\n", getcwd(cwd, 100)); 
     }    
 
 }
@@ -341,17 +328,8 @@ int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     // Write our command to main socketfd connection.
     write(socketfd, ls, strlen(ls)); 
 
-    if(D_FLAG) printf("Waiting server Response..\n");
-    readbytes = read(socketfd, r_buf, sizeof(r_buf)); 
-    if(D_FLAG) {  
-        printf("Server response: %c\n", r_buf[0]);
-    } 
-    /*GET SERVER RESPONSE*/
-    if(r_buf[0] == 69) { 
-        write(STDERR_FILENO, buf, readbytes); 
-        fflush(stderr);
-        return -1; 
-    }
+    if( server_response(socketfd, r_buf, sizeof(r_buf)) < 0)  return -1; 
+
     fork_to_more(datasocket);
 }
 int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
@@ -368,17 +346,9 @@ int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
         //More robust checking needed. 
         write(socketfd, c, strlen(c)); 
         write(socketfd, buf, strlen(buf));
-        if(D_FLAG) printf("Awaiting server response..\n"); 
-        readbytes = read(socketfd, cwd, 100); 
 
-        if(D_FLAG) {  
-            printf("Server response: %c\n", cwd[0]);
-        } 
-        /*GET SERVER RESPONSE*/
-        if(cwd[0] == 69) { 
-            write(STDERR_FILENO, cwd, readbytes); 
-            fflush(stderr);
-        }
+        if( server_response(socketfd, cwd, sizeof(cwd)) < 0)  return -1; 
+
         else {        
             printf("Changed remote path to: %s", buf); 
         }
@@ -399,24 +369,19 @@ int show_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     write(socketfd, get, strlen(get)); 
     write(socketfd, buf, strlen(buf)); 
     
-    if(D_FLAG) printf("Awaiting server response..\n"); 
-    readbytes = read(socketfd, r_buf, sizeof(r_buf)); 
-
-    if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
-    /*GET SERVER RESPONSE*/
-    if(r_buf[0] == 69) { 
-        write(STDERR_FILENO, buf, readbytes); 
-        fflush(stderr);
-        return -1;
+    if( server_response(socketfd, r_buf, sizeof(r_buf)) < 0) { 
+        close(datasocket);
+        return -1; 
     }
+
     else {        
         printf("Showing file: %s", buf); 
     }
     fork_to_more(datasocket);     
 }
-int fork_to_more(int datasocket) { 
-    int fd[2], reader, writer; 
+int fork_to_more(int datasocket) {
 
+    int fd[2], reader, writer; 
     if(pipe (fd) < 0) { 
         printf("%s\n", strerror(errno)); 
         exit(-1); 
@@ -444,7 +409,6 @@ int fork_to_more(int datasocket) {
     }
     close(datasocket);
 } 
-
 int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
     int datasocket, readbytes, filefd, err;
     char r_buf[512]; 
@@ -470,34 +434,32 @@ int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
         printf("File already exists locally.\n"); 
         return -1;
     }
-    else { 
-        filefd = open(filename, O_RDWR | O_CREAT , 0700);
-    }
+
     datasocket = get_datasocket(socketfd, D_FLAG, arg); 
     write(socketfd, get, strlen(get));
     write(socketfd, buf, strlen(buf)); 
 
-    if(D_FLAG) printf("Awaiting server response..\n"); 
-    readbytes = read(socketfd, r_buf, sizeof(r_buf)); 
-
-    if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
-    /*GET SERVER RESPONSE*/
-    if(r_buf[0] == 69) { 
-        write(STDERR_FILENO, r_buf, readbytes); 
-        fflush(stderr);
-        return -1;
+    if( server_response(socketfd, r_buf, sizeof(r_buf)) < 0) { 
+        close(datasocket);
+        free(filename);
+        return -1; 
     }
+    filefd = open(filename, O_RDWR | O_CREAT , 0700);
+
     if( lseek(filefd, 0, SEEK_SET) < 0) fprintf(stderr, strerror(errno), sizeof(strerror(errno))); 
 
     while( (readbytes = read(datasocket, r_buf, sizeof(r_buf))) > 0) { 
         if(D_FLAG) printf("Read %d bytes from server, writing same to local file.\n", readbytes); 
         write(filefd, r_buf, readbytes); 
     }
+    if(readbytes < 0) { 
+        fprintf(stderr, "Problem with reading datasocket\n"); 
+        unlink(filename);
+    } 
     close(filefd);
     close(datasocket);
     free(filename);
 }   
-
 int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
     int datasocket, readbytes, filefd, err;
     char r_buf[512]; 
@@ -536,16 +498,12 @@ int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     write(socketfd, put, strlen(put)); 
     write(socketfd, filename, strlen(filename));
 
-    if(D_FLAG) printf("Awaiting server response..\n"); 
-    readbytes = read(socketfd, r_buf, sizeof(r_buf)); 
 
-    if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
-    /*GET SERVER RESPONSE*/
-    if(r_buf[0] == 69) { 
-        write(STDERR_FILENO, r_buf, readbytes); 
-        fflush(stderr);
-        return -1;
-    }
+    if( server_response(socketfd, r_buf, sizeof(r_buf)) < 0) { 
+        close(datasocket);
+        free(filename);
+        return -1; 
+    } 
 
     while ( (readbytes = read(filefd, r_buf, sizeof(r_buf))) > 0) { 
         if(D_FLAG) printf("Read %d bytes from local path, writing to server.\n", readbytes); 
@@ -567,6 +525,18 @@ int checkfile(char *inputPath) {
 	}
     return -1;
 }
+int server_response(int socketfd, char * r_buf, int size) { 
+    int readbytes ; 
+    if(D_FLAG) printf("Awaiting server response..\n"); 
+    readbytes = read(socketfd, r_buf,size); 
 
+    if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
+    /*GET SERVER RESPONSE*/
+    if(r_buf[0] == 69) { 
+        fprintf(stderr, "Server: %s", r_buf);
+        fflush(stderr);
+        return -1;
+    }
+    return 0;
 
-
+} 
