@@ -26,15 +26,28 @@ int main(int argc, char const *argv[])
         perror("Error"); 
         exit(-1); 
     } 
+    if(D_FLAG) printf("sockerfd was created with a descriptor %d\n", socketfd); 
     if(setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int))) { 
         perror("Error");
         exit(-1); 
     }
-    
+
     memset(&server_address, 0, sizeof(struct sockaddr_in)); 
     server_address.sin_family = AF_INET; 
-    server_address
+    server_address.sin_addr.s_addr = htonl(INADDR_ANY); 
+    server_address.sin_port = htons(USER_PORT);
 
+    if( bind(socketfd, (struct sockaddr*) &server_address, sizeof(struct sockaddr_in) ) ) { 
+        perror("Error");
+        exit(-1); 
+    }
+    if(D_FLAG) printf("socket bounded to port %s\n", USER_PORT); 
+
+    if( listen(socketfd, BACKLOG) < 0) { 
+        perror("Error"); 
+        exit(-1);
+    } 
+    if(D_FLAG) printf("listen with connection queue of %d\n", BACKLOG); 
 
     return 0;
 
