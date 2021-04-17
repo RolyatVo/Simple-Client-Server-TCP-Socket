@@ -3,6 +3,7 @@
 //Double check for a connection if first fails
 //keep reading until new lines, do not put assume/anything in static arrays.
 //while(waitoid(0, status, WNOHANG) >0 );
+//Check if we cant obtain data port number
 int D_FLAG;
 
 int main(int argc, char const *argv[]){
@@ -257,7 +258,7 @@ int cd_cmd(char *buf, int D_FLAG) {
         buf[strlen(buf)-1] = '\0'; 
         if(D_FLAG) printf("Changing to Path %s\n", buf); 
         err = chdir(buf); 
-        if (err < 0) printf("%s\n", strerror(errno)); 
+        if (err < 0) fprintf(stderr, "%s\n", strerror(errno)); 
         else printf("Changed cwd to %s\n", getcwd(cwd, 100)); 
     }    
 
