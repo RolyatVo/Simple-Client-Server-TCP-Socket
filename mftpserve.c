@@ -102,26 +102,46 @@ int childprocess(int listenfd) {
             if(D_FLAG) printf("C %d: Recieved %s", getpid(), buf);
             printf("GOT: %s", buf);
             switch (buf[0]){
-            case 81:
-            //set exit command so that we exited normally
-                exit_cmd(listenfd); 
-                break;
-            case 67: 
-                cd_cmd(listenfd, buf); 
-                break;
-            case 68:
-                if(datalistenfd > 0) sendE("Data socket already exists", listenfd); 
-                else datalistenfd = getdatasocket(listenfd); 
-                break;
-            case 76: 
-                if(datalistenfd < 0) sendE("Data connection was never established", listenfd);
-                else {
-                    sendA(listenfd, getpid());   
-                    ls_cmd(datalistenfd);
-                }
-                break;
-            default:
-                break;
+                case 81:
+                //set exit command so that we exited normally
+                    exit_cmd(listenfd); 
+                    break;
+                case 67: // C<pathname> command 
+                    cd_cmd(listenfd, buf); 
+                    break;
+                case 68: // <D> command
+                    if(datalistenfd > 0) sendE("Data socket already exists", listenfd); 
+                    else datalistenfd = getdatasocket(listenfd); 
+                    break;
+                case 76: // <L> command 
+                // Check to see if they established a data connection.
+                    if(datalistenfd < 0) sendE("Data connection was never established", listenfd);
+                    else {
+                        sendA(listenfd, getpid());   
+                        ls_cmd(datalistenfd);
+                        close(datalistenfd);
+                        datalistenfd = -20;
+                    }
+                    break;
+                case 71: // G command
+                    if(datalistenfd < 0) sendE("Data connection was never established", listenfd);
+                    else { 
+                        sendA(listenfd, getpid()); 
+                        get_cmd(listenfd, datalistenfd, buf); 
+                        close(datalistenfd);
+                        datalistenfd = -20;
+                    }
+                    break; 
+                case 80: // P command
+                    if(datalistenfd < 0) sendE("Data connection was never established", listenfd);
+                    else { 
+                        put_cmd(listenfd, datalistenfd, buf); 
+                        close(datalistenfd);
+                        datalistenfd = -20;
+                    }
+                    break;
+                default:
+                    break;
             }
             memset(buf, 0, sizeof(buf));
         }
@@ -141,7 +161,9 @@ int sendA (int listenfd, int pid) {
     return 0;
 } 
 int sendE(const char* message, int listenfd) { 
-
+    char *E= "E"; 
+    write(listenfd, E, strlen(E));
+    write(listenfd, message, strlen(message));
 } 
 int exit_cmd(int listenfd) { 
     int pid = getpid();
@@ -209,7 +231,7 @@ int getdatasocket(int listenfd) {
     printf("POOORT: %s", port);
     write(listenfd, port, strlen(port));
 
-    if(D_FLAG) printf("C %d: Sent acknowledgement -> %s%s",getpid(), a, port);
+    if(D_FLAG) printf("C %d: Sent acknowledgement -> %s",getpid(), port);
 
     if( (datalistenfd = accept(datasocketfd, (struct sockaddr*) &client_address, &length)) ) { 
         if((hostEntry = getnameinfo((struct sockaddr*)&client_address, sizeof(client_address), hostName, sizeof(hostName), NULL, 0, NI_NUMERICSERV)) != 0) { 
@@ -253,5 +275,86 @@ int ls_cmd(int datalistenfd) {
         waitpid(pid, NULL, 0); 
         if(D_FLAG) printf("ls command completed\n");
     }
-    close(datalistenfd);
 } 
+
+int get_cmd(int listenfd, int datalistenfd, char*buf) { 
+    int filefd, readbytes;
+    char r_buf[512]; 
+    buf+=1; 
+    if(strlen(buf) ==0) { 
+        sendE("No path given.\n", listenfd);
+        return -1;
+    }
+    buf[strlen(buf)-1] = '\0'; 
+
+    if( access(buf, F_OK) != 0) { 
+        sendE("File does not exist in path.\n", listenfd); 
+        return -1;
+    }
+    else if(checkfile(buf) < 0) {
+        sendE("File is not readable/regular.\n", listenfd);
+        return -1;
+    }
+    else {
+        sendA(listenfd, getpid()); 
+        filefd = open(buf, O_RDONLY); 
+        printf("OPENED PATH %s\n", buf);
+    }
+    if( lseek(filefd, 0, SEEK_SET) < 0) fprintf(stderr, strerror(errno), sizeof(strerror(errno)));
+
+    while( (readbytes = read(filefd, r_buf, sizeof(r_buf))) > 0) { 
+        if(D_FLAG) printf("Read %d bytes from local path, writing to server.\n", readbytes); 
+        write(datalistenfd, r_buf, readbytes);
+        //ERROR CHECK WRITE
+    }
+    close(filefd); 
+
+
+} 
+int checkfile(char *inputPath) { 
+    struct stat area, *s = &area;
+
+	// Check to see if inputpath is a regular file, if it is and it's readable return 1, else just return -1
+	if(stat(inputPath, s) == 0 ) { 
+		//Regular file and readable
+		if(S_ISREG(s->st_mode) && (s->st_mode & S_IRUSR)) { 
+			return 1; 
+		}
+	}
+    return -1;
+} 
+
+int put_cmd(int listenfd, int datalistenfd, char *buf) { 
+    int filefd, readbytes;
+    char r_buf[512]; 
+    char *line = "/", *filename = NULL, *token;
+    buf+=1; 
+    if(strlen(buf) ==0) { 
+        sendE("No path given.\n", listenfd);
+        return -1;
+    }
+    token = strtok(buf, line); 
+    while(token != NULL) {
+        if(filename != NULL) free(filename);
+        filename = strdup(token); 
+        token = strtok(NULL, line); 
+    }
+    filename[strlen(filename)-1] = '\0';
+    if( access(filename, F_OK) == 0) { 
+        sendE("File already exists locally.\n", listenfd); 
+        return -1;
+    }
+    filefd = open(filename, O_RDWR | O_CREAT , 0700);
+    if( lseek(filefd, 0, SEEK_SET) < 0) fprintf(stderr, strerror(errno), sizeof(strerror(errno))); 
+    while( (readbytes = read(datalistenfd, r_buf, sizeof(r_buf))) > 0) { 
+        if(D_FLAG) printf("Read %d bytes from server, writing same to local file.\n", readbytes); 
+        write(filefd, r_buf, readbytes); 
+        //CHECK WRITE FOR ERRRORS
+    }
+    if(readbytes < 0) { 
+        fprintf(stderr, "Problem with reading datasocket\n"); 
+        unlink(filename);
+    } 
+    close(filefd);
+    free(filename);
+}

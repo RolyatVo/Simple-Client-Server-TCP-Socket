@@ -12,3 +12,6 @@ int sendE(const char* message, int listenfd);
 int sendA (int listenfd, int pid);
 int getdatasocket(int listenfd);
 int ls_cmd(int datalistenfd);
+int get_cmd(int listenfd, int datalistenfd, char*buf); 
+int checkfile(char *inputPath);
+int put_cmd(int listenfd, int datalistenfd, char *buf);
