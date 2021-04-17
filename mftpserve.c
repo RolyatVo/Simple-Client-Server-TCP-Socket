@@ -100,7 +100,6 @@ int childprocess(int listenfd) {
         if (readbytes >0 ) {
         // while ( (readbytes = read(listenfd, buf, sizeof(buf))) > 0 ) { 
             if(D_FLAG) printf("C %d: Recieved %s", getpid(), buf);
-            printf("GOT: %s", buf);
             switch (buf[0]){
                 case 81:
                 //set exit command so that we exited normally
@@ -126,7 +125,6 @@ int childprocess(int listenfd) {
                 case 71: // G command
                     if(datalistenfd < 0) sendE("Data connection was never established", listenfd);
                     else { 
-                        sendA(listenfd, getpid()); 
                         get_cmd(listenfd, datalistenfd, buf); 
                         close(datalistenfd);
                         datalistenfd = -20;
@@ -228,7 +226,6 @@ int getdatasocket(int listenfd) {
     }
     if(D_FLAG) printf("C %d; listening to data socket\n", getpid());
     sprintf(port, "A%d\n", ntohs(server_address.sin_port)); 
-    printf("POOORT: %s", port);
     write(listenfd, port, strlen(port));
 
     if(D_FLAG) printf("C %d: Sent acknowledgement -> %s",getpid(), port);
@@ -278,6 +275,7 @@ int ls_cmd(int datalistenfd) {
 } 
 
 int get_cmd(int listenfd, int datalistenfd, char*buf) { 
+
     int filefd, readbytes;
     char r_buf[512]; 
     buf+=1; 
@@ -286,19 +284,18 @@ int get_cmd(int listenfd, int datalistenfd, char*buf) {
         return -1;
     }
     buf[strlen(buf)-1] = '\0'; 
-
     if( access(buf, F_OK) != 0) { 
         sendE("File does not exist in path.\n", listenfd); 
         return -1;
     }
-    else if(checkfile(buf) < 0) {
+    else if(checkfile(buf) < 0 || access(buf, R_OK) != 0) {
         sendE("File is not readable/regular.\n", listenfd);
+        printf("Error file not readable on server.\n");
         return -1;
     }
     else {
         sendA(listenfd, getpid()); 
         filefd = open(buf, O_RDONLY); 
-        printf("OPENED PATH %s\n", buf);
     }
     if( lseek(filefd, 0, SEEK_SET) < 0) fprintf(stderr, strerror(errno), sizeof(strerror(errno)));
 
@@ -308,8 +305,6 @@ int get_cmd(int listenfd, int datalistenfd, char*buf) {
         //ERROR CHECK WRITE
     }
     close(filefd); 
-
-
 } 
 int checkfile(char *inputPath) { 
     struct stat area, *s = &area;
