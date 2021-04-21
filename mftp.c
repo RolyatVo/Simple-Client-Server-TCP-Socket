@@ -2,8 +2,8 @@
 //Check if write fails, unlink 
 //Double check for a connection if first fails
 //keep reading until new lines, do not put assume/anything in static arrays.
-//while(waitoid(0, status, WNOHANG) >0 );
 //Check if we cant obtain data port number
+//lstat cd and remote cd
 int D_FLAG;
 
 int main(int argc, char const *argv[]){
@@ -179,8 +179,11 @@ int exit_cmd(int socketfd, char *buf, int D_FLAG) {
     char *exit_str = "Client exiting normally.\n"; 
 
     if(D_FLAG) printf("Giving server command: %s", buf);
-    write(socketfd, server_quit, strlen(server_quit));
-    if (server_response(socketfd,buf, 512) < 0) return -1;
+    if(write(socketfd, server_quit, strlen(server_quit)) < 0) { 
+        fprintf(stderr, "error writing to server exiting...\n");
+        exit(-1);
+    }
+    if (server_response(socketfd,buf, 512) < 0) exit(-1);
     else { 
         write(STDOUT_FILENO, exit_str, strlen(exit_str));
         fflush(stdout);
@@ -287,6 +290,7 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip) {
         newport++;
         if(D_FLAG)  printf("Obtained port number '%s' from server\n", newport); 
     }
+    if(checkconnection(readbytes, 1) ==0);
 
     //Create data socket with description
     if(D_FLAG) printf("IP: %s\nNEWPORT: %s\n", ip, newport);
@@ -345,8 +349,9 @@ int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     }
     else {
         //More robust checking needed. 
-        write(socketfd, c, strlen(c)); 
-        write(socketfd, buf, strlen(buf));
+        checkconnection(1, socketfd);
+        if(write(socketfd, c, strlen(c)) < 0) fprintf(stderr, "Error writing to socketfd\n"); 
+        if(write(socketfd, buf, strlen(buf)) < 0) fprintf(stderr, "Error writing to socketfd\n"); 
 
         if( server_response(socketfd, cwd, sizeof(cwd)) < 0)  return -1; 
 
@@ -530,6 +535,7 @@ int server_response(int socketfd, char * r_buf, int size) {
     int readbytes ; 
     if(D_FLAG) printf("Awaiting server response..\n"); 
     readbytes = read(socketfd, r_buf,size); 
+    if(checkconnection(readbytes, 1) == 0);
 
     if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
     /*GET SERVER RESPONSE*/
@@ -540,4 +546,11 @@ int server_response(int socketfd, char * r_buf, int size) {
     }
     return 0;
 
+} 
+int checkconnection(int readbytes, int socketfd) { 
+    if ( readbytes ==0 || fcntl(socketfd, F_GETFL) <0) { 
+        fprintf(stderr, "Error: main socket closed unexpectedly\n");
+        exit(-1);
+    }
+    return 0;
 } 

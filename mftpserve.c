@@ -245,14 +245,8 @@ int getdatasocket(int listenfd) {
     }
 }
 int ls_cmd(int datalistenfd) { 
-    int fd[2], reader, writer; 
-    if(pipe (fd) < 0) { 
-        printf("%s\n", strerror(errno)); 
-        exit(-1); 
-    }  
-    pipe(fd); 
-    writer = fd[1];
-    reader = fd[0];
+    int reader, writer; 
+
     int pid = fork(); 
     if(pid < 0) { 
         printf("ERROR: Problem with forking.\n");
@@ -260,15 +254,12 @@ int ls_cmd(int datalistenfd) {
     } 
     else if (pid ==0) { 
         dup2(datalistenfd, STDOUT_FILENO); 
-        close(writer); 
-        close(reader);
+
         execlp("ls", "ls", "-l", (char*) NULL); 
         printf("%s\n", strerror(errno));
         exit(-1);
     } 
     else { 
-        close(reader);
-        close(writer);
         waitpid(pid, NULL, 0); 
         if(D_FLAG) printf("ls command completed\n");
     }
