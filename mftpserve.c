@@ -1,5 +1,8 @@
 #include "mftpserve.h" 
 
+#define DATA_BUFFER 512
+#define READ_BUFFER 1
+
 
 int D_FLAG; 
 const char *USER_PORT = NULL; 
@@ -85,14 +88,14 @@ int childprocess(int listenfd) {
     char *string = NULL;
     //Space for longest command, space, newline, and longest possible file path(4096).
     char buf[6 + PATH_MAX] = {0}; 
-    char onec[1];
+    char onec[READ_BUFFER];
 
 
     //Check for listen fd, 
     while (listenfd, F_GETFD) { 
         //Get entire command until newline
-        while( (readbytes = read(listenfd, onec, 1) > 0)) { 
-            strncat(buf, onec, 1);
+        while( (readbytes = read(listenfd, onec, READ_BUFFER) > 0)) { 
+            strncat(buf, onec, readbytes);
             if(onec[0] == '\n') break;
         } 
 
@@ -142,6 +145,11 @@ int childprocess(int listenfd) {
                     break;
             }
             memset(buf, 0, sizeof(buf));
+        }
+        if(readbytes ==0) { 
+            close(listenfd); 
+            printf("C %d: Connection closed unexpectedly or EOF\n", getpid());
+            exit(-1);
         }
         //check to see if we exited normally, if not close fd and return error to server stdout
     }
@@ -277,7 +285,7 @@ int ls_cmd(int datalistenfd) {
 int get_cmd(int listenfd, int datalistenfd, char*buf) { 
 
     int filefd, readbytes;
-    char r_buf[512]; 
+    char r_buf[DATA_BUFFER]; 
     buf+=1; 
     if(strlen(buf) ==0) { 
         sendE("No path given.\n", listenfd);
@@ -339,7 +347,7 @@ int checkdir( char* inputPath, int listenfd) {
 } 
 int put_cmd(int listenfd, int datalistenfd, char *buf) { 
     int filefd, readbytes;
-    char r_buf[512]; 
+    char r_buf[DATA_BUFFER]; 
     char *line = "/", *filename = NULL, *token;
     buf+=1; 
     if(strlen(buf) ==0) { 

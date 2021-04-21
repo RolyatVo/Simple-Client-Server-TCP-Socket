@@ -15,3 +15,4 @@ int checkfile(char *inputPath);
 int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg);
 int server_response(int socketfd, char * r_buf, int size);
 int checkconnection(int readbytes, int socketfd);
+int checkdir(char *inputPath);

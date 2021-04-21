@@ -4,6 +4,9 @@
 //keep reading until new lines, do not put assume/anything in static arrays.
 //Check if we cant obtain data port number
 //lstat cd and remote cd
+//connect can be fatal error
+#define READ_BUFFER 1
+#define DATA_BUFFER 512
 int D_FLAG;
 
 int main(int argc, char const *argv[]){
@@ -12,8 +15,8 @@ int main(int argc, char const *argv[]){
     char *init_err = "Usage: ./mftp [-d] <port> <hostname | IP address>\n";
     char *mftp = "MFTP>";
     char *dflag = "-d"; 
-
-    char buf[256] = {0};
+    char read_buf[1] = {0};
+    char buf[PATH_MAX + 6] = {0};
     
     memset(&hints, 0, sizeof(hints)); 
     hints.ai_socktype = SOCK_STREAM; 
@@ -69,7 +72,11 @@ int main(int argc, char const *argv[]){
         //Always write mftp> before getting command
         write(STDOUT_FILENO, mftp, strlen(mftp));
         //Get command from user.
-        if ((readbytes = read(STDIN_FILENO, buf, 256)) > 0) { 
+        while(readbytes = read(STDIN_FILENO, read_buf, 1) > 0) { 
+            strncat(buf, read_buf, 1);
+            if(read_buf[0] == '\n') break;
+        }
+        if (readbytes > 0) { 
             if(D_FLAG) printf("Commmand string = %s", buf);
             if( (cmd = local_cmd(buf)) > 0) { //Check if commmand is for local
                 switch (cmd){
@@ -115,6 +122,7 @@ int main(int argc, char const *argv[]){
                 fflush(stderr);
             }
             memset(buf, 0, sizeof(buf));
+            memset(read_buf, 0, sizeof(read_buf));
         }
     } 
     return 0;
@@ -258,10 +266,13 @@ int cd_cmd(char *buf, int D_FLAG) {
     }
     else { 
         buf[strlen(buf)-1] = '\0'; 
+        if(checkdir(buf) < 0) { 
+            if(D_FLAG) printf("Problem with given path\n");
+            return -1;
+        } 
         if(D_FLAG) printf("Changing to Path %s\n", buf); 
         err = chdir(buf); 
-        if (err < 0) fprintf(stderr, "%s\n", strerror(errno)); 
-        else printf("Changed cwd to %s\n", getcwd(cwd, 100)); 
+        if (err < 0) fprintf(stderr, "%s\n", strerror(errno));  
     }    
 
 }
@@ -340,7 +351,7 @@ int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     char *space = " "; 
     char *c = "C"; 
     int err, readbytes;
-    char cwd[100]; 
+    char r_buf[50]; 
     char *ptr = buf; 
     buf += 4;
     if(strlen(buf) ==0) { 
@@ -352,7 +363,7 @@ int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
         if(write(socketfd, c, strlen(c)) < 0) fprintf(stderr, "Error writing to socketfd\n"); 
         if(write(socketfd, buf, strlen(buf)) < 0) fprintf(stderr, "Error writing to socketfd\n"); 
 
-        if( server_response(socketfd, cwd, sizeof(cwd)) < 0)  return -1; 
+        if( server_response(socketfd, r_buf, sizeof(r_buf)) < 0)  return -1; 
 
         else {        
             printf("Changed remote path to: %s", buf); 
@@ -416,7 +427,7 @@ int fork_to_more(int datasocket) {
 } 
 int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
     int datasocket, readbytes, filefd, err;
-    char r_buf[512]; 
+    char r_buf[DATA_BUFFER]; 
     char *get = "G", *line = "/";
     char *token, *filename = NULL; 
 
@@ -468,7 +479,7 @@ int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
 int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
     //Rename r_buf to something else and make server reponse not take that.
     int datasocket, readbytes, filefd, err;
-    char r_buf[512]; 
+    char r_buf[DATA_BUFFER]; 
     char *put = "P", *line = "/";
     char *token, *filename = NULL; 
     buf+=4;
@@ -541,8 +552,8 @@ int server_response(int socketfd, char * r_buf, int size) {
     if(D_FLAG) printf("Server response: %c\n", r_buf[0]); 
     /*GET SERVER RESPONSE*/
     if(r_buf[0] == 69) { 
+        r_buf++;
         fprintf(stderr, "Server: %s", r_buf);
-        fflush(stderr);
         return -1;
     }
     return 0;
@@ -554,4 +565,25 @@ int checkconnection(int readbytes, int socketfd) {
         exit(-1);
     }
     return 0;
+} 
+
+int checkdir(char *inputPath) { 
+    struct stat area, *s = &area; 
+    DIR *dir;
+    char cwd[PATH_MAX + 1]; 
+
+    if(access(inputPath, F_OK) != 0) { 
+        printf("ERROR: Directory does not exist!\n");
+        return -1;
+    }
+    if((stat(inputPath, s) ==0) && (S_ISDIR(s->st_mode) ==1)) {
+        if((s->st_mode & S_IRUSR) && (s->st_mode & S_IXUSR)) { 
+            return 1;
+        }
+        else { 
+            printf("ERROR: No permissions for this directory\n");
+            return -1;
+        }
+    } 
+      
 } 
