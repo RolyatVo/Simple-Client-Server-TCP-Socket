@@ -14,4 +14,5 @@ int getdatasocket(int listenfd);
 int ls_cmd(int datalistenfd);
 int get_cmd(int listenfd, int datalistenfd, char*buf); 
 int checkfile(char *inputPath);
+int checkdir( char* inputPath, int listenfd);
 int put_cmd(int listenfd, int datalistenfd, char *buf);

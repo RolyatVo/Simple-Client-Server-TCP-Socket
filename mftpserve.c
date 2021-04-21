@@ -160,6 +160,7 @@ int sendA (int listenfd, int pid) {
 } 
 int sendE(const char* message, int listenfd) { 
     char *E= "E"; 
+    if(D_FLAG) printf("Sending E responsse %s", message);
     write(listenfd, E, strlen(E));
     write(listenfd, message, strlen(message));
 } 
@@ -173,12 +174,20 @@ int exit_cmd(int listenfd) {
 
 } 
 int cd_cmd(int listenfd, char* buf) { 
+    //Check permissions and based on that permissions error check
     int pid = getpid(), err;
     buf++;
-    printf("%s",buf);
     buf[strlen(buf)-1] = '\0';
+    if(checkdir(buf, listenfd) < 0) { 
+        if(D_FLAG) printf("Problem with given path\n");
+        return -1;
+    } 
     err = chdir(buf);
-    if (err < 0) fprintf(stderr,"%s\n", strerror(errno)); 
+    if (err < 0){ 
+        fprintf(stderr,"Error: %s\n", strerror(errno));
+        sendE("Could not cd to given path.\n", listenfd); 
+        return -1;
+    } 
     else printf("changed cwd to %s\n", getcwd(buf, PATH_MAX));
     buf--;
     sendA(listenfd, pid); 
@@ -309,7 +318,25 @@ int checkfile(char *inputPath) {
 	}
     return -1;
 } 
-
+int checkdir( char* inputPath, int listenfd) {
+    struct stat area, *s = &area; 
+    DIR *dir;
+    char cwd[PATH_MAX + 1]; 
+    if(inputPath == ".") inputPath = getcwd(cwd, sizeof(cwd)); 
+    else if(stat(inputPath, s) ==0 && S_ISDIR(s->st_mode) ==0) { 
+        if(S_ISREG(s->st_mode) && (s->st_mode & S_IRUSR)) { 
+            return 1;
+        }
+        else { 
+            sendE("No permissions for this directory\n", listenfd);
+            return -1;
+        } 
+    }
+    else { 
+        sendE("Directory does not exist!\n", listenfd);
+        return -2;
+    }  
+} 
 int put_cmd(int listenfd, int datalistenfd, char *buf) { 
     int filefd, readbytes;
     char r_buf[512]; 

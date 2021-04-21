@@ -127,7 +127,6 @@ int local_cmd(char *buf) {
         if(strcmp(token, exit) ==0) { 
             return 1; 
         }
-        //     !!!!!!!!    ERROR:  Check to see if ls got any parameters       !!!!!!!!!!!!
         else if (strcmp(token, ls) ==0 || strcmp(token, lsn) ==0) { 
             return 2; 
         }
@@ -467,6 +466,7 @@ int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     free(filename);
 }   
 int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
+    //Rename r_buf to something else and make server reponse not take that.
     int datasocket, readbytes, filefd, err;
     char r_buf[512]; 
     char *put = "P", *line = "/";
@@ -532,6 +532,7 @@ int checkfile(char *inputPath) {
     return -1;
 }
 int server_response(int socketfd, char * r_buf, int size) { 
+    //!!Change server repsonse so that it reads one char at a time.!!
     int readbytes ; 
     if(D_FLAG) printf("Awaiting server response..\n"); 
     readbytes = read(socketfd, r_buf,size); 
