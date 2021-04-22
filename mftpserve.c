@@ -140,7 +140,7 @@ int childprocess(int listenfd) {
                         datalistenfd = -20;
                     }
                     break;
-                case 71: // G command
+                case 71: // G command NEED LOGGING
                     if(datalistenfd < 0) sendE("Data connection was never established", listenfd);
                     else { 
                         get_cmd(listenfd, datalistenfd, buf); 
@@ -211,7 +211,7 @@ int cd_cmd(int listenfd, char* buf) {
         sendE("Could not cd to given path.\n", listenfd); 
         return -1;
     } 
-    else printf("changed cwd to %s\n", getcwd(buf, PATH_MAX));
+    else printf("C %d: changed cwd to %s\n", getpid(), buf);
     buf--;
     sendA(listenfd, pid); 
 
@@ -293,7 +293,7 @@ int ls_cmd(int datalistenfd) {
     } 
     else { 
         waitpid(pid, NULL, 0); 
-        if(D_FLAG) printf("ls command completed\n");
+        printf("C %d: ls to client command completed\n", getpid());
     }
 } 
 
@@ -321,7 +321,7 @@ int get_cmd(int listenfd, int datalistenfd, char*buf) {
         filefd = open(buf, O_RDONLY); 
     }
     if( lseek(filefd, 0, SEEK_SET) < 0) fprintf(stderr, strerror(errno), sizeof(strerror(errno)));
-
+    printf("C %d: Transmitting %s to client.\n", getpid(), buf);
     while( (readbytes = read(filefd, r_buf, sizeof(r_buf))) > 0) { 
         if(D_FLAG) printf("Read %d bytes from local path, writing to server.\n", readbytes); 
         write(datalistenfd, r_buf, readbytes);
@@ -379,6 +379,8 @@ int put_cmd(int listenfd, int datalistenfd, char *buf) {
         sendE("File already exists locally.\n", listenfd); 
         return -1;
     }
+    sendA(listenfd, getpid());
+    printf("C %d: Recieving %s and now reading.\n", getpid(), filename);
     filefd = open(filename, O_RDWR | O_CREAT , 0700);
     if( lseek(filefd, 0, SEEK_SET) < 0) fprintf(stderr, strerror(errno), sizeof(strerror(errno))); 
     while( (readbytes = read(datalistenfd, r_buf, sizeof(r_buf))) > 0) { 
@@ -390,6 +392,7 @@ int put_cmd(int listenfd, int datalistenfd, char *buf) {
         fprintf(stderr, "Problem with reading datasocket\n"); 
         unlink(filename);
     } 
+    printf("C %d: %s to server transfer complete.\n", getpid(), filename);
     close(filefd);
     free(filename);
 }
