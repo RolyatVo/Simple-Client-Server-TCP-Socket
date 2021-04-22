@@ -189,7 +189,7 @@ int sendE(const char* message, int listenfd) {
 } 
 int exit_cmd(int listenfd) { 
     int pid = getpid();
-    if (D_FLAG) printf("C %d: Quitting\n", pid);
+    printf("C %d: Quitting\n", pid);
     sendA(listenfd, pid);  
     if (D_FLAG) printf("C %d: exiting normally.\n", pid);
     close(listenfd); 
@@ -350,7 +350,7 @@ int checkdir( char* inputPath, int listenfd) {
         return -1;
     } 
     if(stat(inputPath, s) ==0 && (S_ISDIR(s->st_mode) ==1)) { 
-        if(S_ISREG(s->st_mode) && (s->st_mode & S_IRUSR)) { 
+        if((s->st_mode & S_IXUSR) && (s->st_mode & S_IRUSR)) { 
             return 1;
         }
         else { 
