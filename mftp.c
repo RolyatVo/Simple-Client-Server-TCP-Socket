@@ -5,6 +5,23 @@
 //Check if we cant obtain data port number
 //lstat cd and remote cd
 //connect can be fatal error
+int local_cmd(char *buf);
+int server_cmd (char*buf);
+int exit_cmd(int socketfd, char *buf, int D_FLAG); 
+int get_datasocket(int socketfd, int D_FLAG, const char* ip); 
+int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg);
+int ls_cmd(char*buf, int D_FLAG);
+int cd_cmd(char *buf, int D_FLAG); 
+int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg);
+int show_cmd(int socketfd, char*buf, int D_FLAG, const char*arg);
+int fork_to_more(int datasocket);
+int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg);
+int checkfile(char *inputPath);
+int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg);
+int server_response(int socketfd, char * r_buf, int size);
+int checkconnection(int readbytes, int socketfd);
+int checkdir(char *inputPath);
+
 #define READ_BUFFER 1
 #define DATA_BUFFER 512
 int D_FLAG;
@@ -17,6 +34,7 @@ int main(int argc, char const *argv[]){
     char *dflag = "-d"; 
     char read_buf[1] = {0};
     char buf[PATH_MAX + 6] = {0};
+    const char *ip;
     
     memset(&hints, 0, sizeof(hints)); 
     hints.ai_socktype = SOCK_STREAM; 
@@ -27,34 +45,42 @@ int main(int argc, char const *argv[]){
     if  (argc == 1) { 
             write(STDERR_FILENO, init_err, strlen(init_err));
             fflush(stderr);
+            free(actualdata);
             exit(1);
     }
     else if (strcmp(argv[1], dflag) ==0) { 
         D_FLAG = 1; 
         if( (err = getaddrinfo(argv[3], argv[2], &hints, &actualdata)) !=0) { 
             write(STDERR_FILENO, init_err, strlen(init_err));
+            fprintf(stderr,"%s\n", gai_strerror(err));
             fflush(stderr);
+            free(actualdata);
             exit(1);
         }
     }
     else { 
         if( (err = getaddrinfo(argv[2], argv[1], &hints, &actualdata)) !=0) { 
             write(STDERR_FILENO, init_err, strlen(init_err));
+            fprintf(stderr,"%s\n", gai_strerror(err));
             fflush(stderr);
+            free(actualdata);
             exit(1);
         }
     }
 
     if( (socketfd = socket(actualdata->ai_family, actualdata->ai_socktype, 0)) < 0) { 
-        perror("Error");
+        fprintf(stderr, "Failed socket: ");
+        perror("");
+        free(actualdata);
         exit(1);
     }
     if( connect(socketfd, actualdata->ai_addr, actualdata->ai_addrlen) < 0) { 
-        perror("Error"); 
+        fprintf(stderr, "Failed connecting to server: ");
+        perror("");
+        free(actualdata);
         exit(1); 
     }
 
-    const char *ip;
     if(D_FLAG) { 
         printf("Debug flag detected.\n");
         printf("Created socket with descriptor %d\n", socketfd);  
@@ -78,6 +104,7 @@ int main(int argc, char const *argv[]){
         }
         if (readbytes > 0) { 
             if(D_FLAG) printf("Commmand string = %s", buf);
+            
             if( (cmd = local_cmd(buf)) > 0) { //Check if commmand is for local
                 switch (cmd){
                 case 1:   //EXIT PROGRAMS
@@ -127,6 +154,7 @@ int main(int argc, char const *argv[]){
     } 
     return 0;
 }
+
 int local_cmd(char *buf) { 
     char *lsn = "ls\n",*ls ="ls", *cdn = "cd\n", *exit = "exit\n", *cd = "cd";
     char *space = " ";
@@ -149,6 +177,7 @@ int local_cmd(char *buf) {
         return -1;
     }    
 }
+
 int server_cmd (char*buf) {
     //List of commands
     char *rls = "rls",*rlsn = "rls\n";
@@ -180,6 +209,7 @@ int server_cmd (char*buf) {
         } 
     }
 }
+
 int exit_cmd(int socketfd, char *buf, int D_FLAG) { 
     int readbytes; 
     char *server_quit = "Q\n";
@@ -197,6 +227,7 @@ int exit_cmd(int socketfd, char *buf, int D_FLAG) {
         exit(1);        
     }
 }
+
 int ls_cmd(char *buf, int D_FLAG) { 
     buf += 3;
     if(strlen(buf) !=0) { 
@@ -255,6 +286,7 @@ int ls_cmd(char *buf, int D_FLAG) {
     fflush(stdout);
     return 0;
 }
+
 int cd_cmd(char *buf, int D_FLAG) { 
     char *space = " "; 
     int err;
@@ -276,6 +308,7 @@ int cd_cmd(char *buf, int D_FLAG) {
     }    
 
 }
+
 int get_datasocket(int socketfd, int D_FLAG, const char* ip) { 
     struct addrinfo h, *actdata; 
     struct sockaddr_in* server; 
@@ -329,6 +362,7 @@ int get_datasocket(int socketfd, int D_FLAG, const char* ip) {
 
     return f_newport;
 } 
+
 int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) { 
     int reader, writer, readbytes, datasocket; 
     char r_buf[50]; 
@@ -347,6 +381,7 @@ int rls_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
 
     fork_to_more(datasocket);
 }
+
 int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
     char *space = " "; 
     char *c = "C"; 
@@ -370,6 +405,7 @@ int rcd_cmd(int socketfd, char *buf, int D_FLAG, const char* arg) {
         }
     }    
 }
+
 int show_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
     int datasocket, readbytes; 
     char r_buf[50];
@@ -395,6 +431,7 @@ int show_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     }
     fork_to_more(datasocket);     
 }
+
 int fork_to_more(int datasocket) {
 
     int fd[2], reader, writer; 
@@ -425,6 +462,7 @@ int fork_to_more(int datasocket) {
     }
     close(datasocket);
 } 
+
 int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
     int datasocket, readbytes, filefd, err;
     char r_buf[DATA_BUFFER]; 
@@ -476,6 +514,7 @@ int get_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     close(datasocket);
     free(filename);
 }   
+
 int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) { 
     //Rename r_buf to something else and make server reponse not take that.
     int datasocket, readbytes, filefd, err;
@@ -530,6 +569,7 @@ int put_cmd(int socketfd, char*buf, int D_FLAG, const char*arg) {
     close(datasocket);
 
 }
+
 int checkfile(char *inputPath) { 
 	struct stat area, *s = &area;
 
@@ -542,10 +582,13 @@ int checkfile(char *inputPath) {
 	}
     return -1;
 }
+
 int server_response(int socketfd, char * r_buf, int size) { 
     //!!Change server repsonse so that it reads one char at a time.!!
+    
     int readbytes ; 
     if(D_FLAG) printf("Awaiting server response..\n"); 
+    memset(r_buf, 0, size);
     readbytes = read(socketfd, r_buf,size); 
     if(checkconnection(readbytes, 1) == 0);
 
@@ -559,6 +602,7 @@ int server_response(int socketfd, char * r_buf, int size) {
     return 0;
 
 } 
+
 int checkconnection(int readbytes, int socketfd) { 
     if ( readbytes ==0 || fcntl(socketfd, F_GETFL) <0) { 
         fprintf(stderr, "Error: main socket closed unexpectedly\n");

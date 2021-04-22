@@ -1,7 +1,22 @@
-#include "mftpserve.h" 
+#include "mftp.h"
+#define DEFAULT_PORTNUM     49999
+#define DEFAULT_PORTNUM_STR "49999"
+#define BACKLOG             4
+#define PATH_MAX            4096
+#define DATA_BUFFER         512
+#define READ_BUFFER         1
 
-#define DATA_BUFFER 512
-#define READ_BUFFER 1
+int childprocess(int listenfd);
+int exit_cmd(int listenfd);
+int cd_cmd(int listenfd, char* buf);
+int sendE(const char* message, int listenfd);
+int sendA (int listenfd, int pid);
+int getdatasocket(int listenfd);
+int ls_cmd(int datalistenfd);
+int get_cmd(int listenfd, int datalistenfd, char*buf); 
+int checkfile(char *inputPath);
+int checkdir( char* inputPath, int listenfd);
+int put_cmd(int listenfd, int datalistenfd, char *buf);
 
 
 int D_FLAG; 
@@ -330,8 +345,11 @@ int checkdir( char* inputPath, int listenfd) {
     struct stat area, *s = &area; 
     DIR *dir;
     char cwd[PATH_MAX + 1]; 
-    if(inputPath == ".") inputPath = getcwd(cwd, sizeof(cwd)); 
-    else if(stat(inputPath, s) ==0 && S_ISDIR(s->st_mode) ==0) { 
+    if(access(inputPath, F_OK) !=0) { 
+        sendE("Directory does not exist!\n", listenfd);    
+        return -1;
+    } 
+    if(stat(inputPath, s) ==0 && (S_ISDIR(s->st_mode) ==1)) { 
         if(S_ISREG(s->st_mode) && (s->st_mode & S_IRUSR)) { 
             return 1;
         }
@@ -340,10 +358,6 @@ int checkdir( char* inputPath, int listenfd) {
             return -1;
         } 
     }
-    else { 
-        sendE("Directory does not exist!\n", listenfd);
-        return -2;
-    }  
 } 
 int put_cmd(int listenfd, int datalistenfd, char *buf) { 
     int filefd, readbytes;
