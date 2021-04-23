@@ -1,9 +1,7 @@
 #include "mftp.h" 
-//Check if write fails, unlink 
 //Double check for a connection if first fails
 //keep reading until new lines, do not put assume/anything in static arrays.
 //Check if we cant obtain data port number
-//lstat cd and remote cd
 //connect can be fatal error
 int local_cmd(char *buf);
 int server_cmd (char*buf);
@@ -220,9 +218,13 @@ int exit_cmd(int socketfd, char *buf, int D_FLAG) {
         fprintf(stderr, "error writing to server exiting...\n");
         exit(-1);
     }
-    if (server_response(socketfd,buf, 512) < 0) exit(-1);
+    if (server_response(socketfd,buf, DATA_BUFFER) < 0){ 
+        close(socketfd);
+        exit(-1);
+    }
     else { 
         write(STDOUT_FILENO, exit_str, strlen(exit_str));
+        close(socketfd);
         fflush(stdout);
         exit(1);        
     }
@@ -597,6 +599,7 @@ int server_response(int socketfd, char * r_buf, int size) {
     if(r_buf[0] == 69) { 
         r_buf++;
         fprintf(stderr, "Server: %s", r_buf);
+        r_buf--;
         return -1;
     }
     return 0;
